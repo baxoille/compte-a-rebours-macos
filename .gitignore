@@ -1,0 +1,11 @@
+/Passation-Fond-Ecran-Mac/
+/PASSATION.md
+/.DS_Store
+**/.DS_Store
+/DerivedData/
+/build/
+*.app/
+*.saver/
+*.dSYM/
+xcuserdata/
+*.xcuserstate

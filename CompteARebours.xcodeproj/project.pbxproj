@@ -1,0 +1,85 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		00000000000000000000001E = { isa = PBXBuildFile; fileRef = 000000000000000000000008; };
+		00000000000000000000001F = { isa = PBXBuildFile; fileRef = 000000000000000000000009; };
+		000000000000000000000020 = { isa = PBXBuildFile; fileRef = 00000000000000000000000A; };
+		000000000000000000000021 = { isa = PBXBuildFile; fileRef = 00000000000000000000000C; };
+		000000000000000000000022 = { isa = PBXBuildFile; fileRef = 00000000000000000000000D; };
+		00000000000000000000002A = { isa = PBXBuildFile; fileRef = 000000000000000000000008; };
+		00000000000000000000002B = { isa = PBXBuildFile; fileRef = 000000000000000000000009; };
+		00000000000000000000002C = { isa = PBXBuildFile; fileRef = 00000000000000000000000A; };
+		00000000000000000000002D = { isa = PBXBuildFile; fileRef = 00000000000000000000000F; };
+		000000000000000000000026 = { isa = PBXBuildFile; fileRef = 000000000000000000000012; };
+		00000000000000000000002F = { isa = PBXBuildFile; fileRef = 00000000000000000000002E; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		000000000000000000000008 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Countdown.swift; sourceTree = "<group>"; };
+		000000000000000000000009 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountdownGrid.swift; sourceTree = "<group>"; };
+		00000000000000000000000A = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountdownRenderer.swift; sourceTree = "<group>"; };
+		00000000000000000000000C = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountdownApp.swift; sourceTree = "<group>"; };
+		00000000000000000000000D = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperController.swift; sourceTree = "<group>"; };
+		00000000000000000000000F = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountdownScreenSaver.swift; sourceTree = "<group>"; };
+		000000000000000000000010 = { isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		000000000000000000000012 = { isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScreenSaver.framework; path = System/Library/Frameworks/ScreenSaver.framework; sourceTree = SDKROOT; };
+		000000000000000000000015 = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CompteARebours.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000016 = { isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CompteAReboursSaver.saver; sourceTree = BUILT_PRODUCTS_DIR; };
+		00000000000000000000002E = { isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		000000000000000000000018 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		000000000000000000000024 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (000000000000000000000026,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		000000000000000000000007 = { isa = PBXGroup; children = (000000000000000000000008, 000000000000000000000009, 00000000000000000000000A,); path = Shared; sourceTree = "<group>"; };
+		00000000000000000000000B = { isa = PBXGroup; children = (00000000000000000000000C, 00000000000000000000000D, 00000000000000000000002E,); path = App; sourceTree = "<group>"; };
+		00000000000000000000000E = { isa = PBXGroup; children = (00000000000000000000000F, 000000000000000000000010,); path = ScreenSaver; sourceTree = "<group>"; };
+		000000000000000000000011 = { isa = PBXGroup; children = (000000000000000000000012,); name = Frameworks; sourceTree = "<group>"; };
+		000000000000000000000003 = { isa = PBXGroup; children = (000000000000000000000015, 000000000000000000000016,); name = Products; sourceTree = "<group>"; };
+		000000000000000000000002 = { isa = PBXGroup; children = (000000000000000000000007, 00000000000000000000000B, 00000000000000000000000E, 000000000000000000000011, 000000000000000000000003,); sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		000000000000000000000013 = { isa = PBXNativeTarget; buildConfigurationList = 00000000000000000000001B; buildPhases = (000000000000000000000017, 000000000000000000000018, 000000000000000000000019,); buildRules = (); dependencies = (); name = CompteARebours; productName = CompteARebours; productReference = 000000000000000000000015; productType = "com.apple.product-type.application"; };
+		000000000000000000000014 = { isa = PBXNativeTarget; buildConfigurationList = 000000000000000000000027; buildPhases = (000000000000000000000023, 000000000000000000000024, 000000000000000000000025,); buildRules = (); dependencies = (); name = CompteAReboursSaver; productName = CompteAReboursSaver; productReference = 000000000000000000000016; productType = "com.apple.product-type.bundle"; };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		000000000000000000000001 = { isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = YES; }; buildConfigurationList = 000000000000000000000004; compatibilityVersion = "Xcode 14.0"; developmentRegion = fr; hasScannedForEncodings = 0; knownRegions = (fr, Base); mainGroup = 000000000000000000000002; productRefGroup = 000000000000000000000003; projectDirPath = ""; projectRoot = ""; targets = (000000000000000000000013, 000000000000000000000014,); };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		000000000000000000000019 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (00000000000000000000002F,); runOnlyForDeploymentPostprocessing = 0; };
+		000000000000000000000025 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		000000000000000000000017 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (00000000000000000000001E, 00000000000000000000001F, 000000000000000000000020, 000000000000000000000021, 000000000000000000000022,); runOnlyForDeploymentPostprocessing = 0; };
+		000000000000000000000023 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (00000000000000000000002A, 00000000000000000000002B, 00000000000000000000002C, 00000000000000000000002D,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		000000000000000000000005 = { isa = XCBuildConfiguration; buildSettings = { SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; SWIFT_VERSION = 5.0; CLANG_ENABLE_MODULES = YES; ENABLE_USER_SCRIPT_SANDBOXING = YES; DEBUG_INFORMATION_FORMAT = dwarf; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; ONLY_ACTIVE_ARCH = YES; }; name = Debug; };
+		000000000000000000000006 = { isa = XCBuildConfiguration; buildSettings = { SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; SWIFT_VERSION = 5.0; CLANG_ENABLE_MODULES = YES; ENABLE_USER_SCRIPT_SANDBOXING = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_COMPILATION_MODE = wholemodule; ONLY_ACTIVE_ARCH = NO; }; name = Release; };
+		00000000000000000000001C = { isa = XCBuildConfiguration; buildSettings = { PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; MARKETING_VERSION = 0.1.0; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Compte à rebours"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities"; PRODUCT_BUNDLE_IDENTIFIER = fr.comptearebours.macos; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ENABLE_APP_SANDBOX = NO; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; }; name = Debug; };
+		00000000000000000000001D = { isa = XCBuildConfiguration; buildSettings = { PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; MARKETING_VERSION = 0.1.0; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Compte à rebours"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities"; PRODUCT_BUNDLE_IDENTIFIER = fr.comptearebours.macos; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ENABLE_APP_SANDBOX = NO; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; }; name = Release; };
+		000000000000000000000028 = { isa = XCBuildConfiguration; buildSettings = { PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; MARKETING_VERSION = 0.1.0; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ScreenSaver/Info.plist; PRODUCT_BUNDLE_IDENTIFIER = fr.comptearebours.macos.saver; WRAPPER_EXTENSION = saver; MACH_O_TYPE = mh_bundle; SKIP_INSTALL = YES; }; name = Debug; };
+		000000000000000000000029 = { isa = XCBuildConfiguration; buildSettings = { PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; MARKETING_VERSION = 0.1.0; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ScreenSaver/Info.plist; PRODUCT_BUNDLE_IDENTIFIER = fr.comptearebours.macos.saver; WRAPPER_EXTENSION = saver; MACH_O_TYPE = mh_bundle; SKIP_INSTALL = YES; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		000000000000000000000004 = { isa = XCConfigurationList; buildConfigurations = (000000000000000000000005, 000000000000000000000006,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		00000000000000000000001B = { isa = XCConfigurationList; buildConfigurations = (00000000000000000000001C, 00000000000000000000001D,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		000000000000000000000027 = { isa = XCConfigurationList; buildConfigurations = (000000000000000000000028, 000000000000000000000029,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = 000000000000000000000001;
+}
