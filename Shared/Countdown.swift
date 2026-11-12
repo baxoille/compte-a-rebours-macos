@@ -42,6 +42,13 @@ struct CountdownSettings: Codable, Equatable {
     var palette: Palette = .light
 
     var validationError: String? {
+        guard title.utf8.count <= 1024, title.count <= 120 else {
+            return "Le titre est limité à 120 caractères et 1 024 octets."
+        }
+        return dateValidationError
+    }
+
+    fileprivate var dateValidationError: String? {
         let duration = end.timeIntervalSince(start)
         guard duration.isFinite, duration > 0 else { return "L’échéance doit suivre le début." }
         guard duration <= Double(Self.maximumDays) * Self.day else { return "La durée maximale est de 10 000 jours." }
@@ -104,45 +111,90 @@ struct CountdownPreferences {
     // macOS hosts legacy savers in a different preferences container. Both processes
     // can read this location under the same user ID without accessing that container.
     private let directory: URL
-    private var countdownFile: URL { directory.appending(path: "countdown.json") }
+    private static let filename = "countdown.json"
+    private static let maximumBytes = 16 * 1024
 
     init(sharedDirectory: URL = URL(fileURLWithPath: "/Users/Shared", isDirectory: true)) {
         directory = sharedDirectory.appending(path: "fr.comptearebours.macos.\(getuid())", directoryHint: .isDirectory)
     }
 
     func load() -> CountdownSettings? {
-        guard let data = read(countdownFile),
+        guard let settings = loadDraft(), settings.validationError == nil else { return nil }
+        return settings
+    }
+
+    func loadDraft() -> CountdownSettings? {
+        guard let data = read(),
               let settings = try? JSONDecoder().decode(CountdownSettings.self, from: data),
-              settings.validationError == nil else { return nil }
+              settings.dateValidationError == nil else { return nil }
         return settings
     }
 
     func save(_ settings: CountdownSettings) throws {
         guard settings.validationError == nil else { throw CocoaError(.fileWriteUnknown) }
-        try write(JSONEncoder().encode(settings), to: countdownFile)
+        let data = try JSONEncoder().encode(settings)
+        guard data.count <= Self.maximumBytes else { throw CocoaError(.fileWriteUnknown) }
+        try write(data)
     }
 
-    private func read(_ file: URL) -> Data? {
-        guard isPrivate(directory, type: S_IFDIR), isPrivate(file, type: S_IFREG) else { return nil }
-        return try? Data(contentsOf: file)
-    }
-
-    private func write(_ data: Data, to file: URL) throws {
-        if mkdir(directory.path, 0o700) != 0 && errno != EEXIST {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        guard isPrivate(directory, type: S_IFDIR) else { throw CocoaError(.fileWriteNoPermission) }
-        let temporary = directory.appending(path: UUID().uuidString + ".tmp")
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        try data.write(to: temporary, options: .withoutOverwriting)
-        guard chmod(temporary.path, 0o600) == 0, rename(temporary.path, file.path) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-    }
-
-    private func isPrivate(_ url: URL, type: mode_t) -> Bool {
+    var hasSavedFile: Bool {
         var info = stat()
-        return lstat(url.path, &info) == 0 && info.st_uid == getuid() &&
-            (info.st_mode & S_IFMT) == type && (info.st_mode & 0o077) == 0
+        let path = directory.appending(path: Self.filename).path
+        return lstat(path, &info) == 0 || errno != ENOENT
+    }
+
+    private func read() -> Data? {
+        guard let parent = try? openPrivateDirectory() else { return nil }
+        defer { close(parent) }
+        // Nonblocking open lets us inspect the descriptor without waiting on a FIFO.
+        let descriptor = openat(parent, Self.filename, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { return nil }
+        let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        guard let info = privateStat(descriptor, type: S_IFREG),
+              info.st_size > 0, info.st_size <= Self.maximumBytes,
+              let data = try? file.read(upToCount: Self.maximumBytes + 1),
+              data.count <= Self.maximumBytes else { return nil }
+        return data
+    }
+
+    private func write(_ data: Data) throws {
+        if mkdir(directory.path, 0o700) != 0 && errno != EEXIST {
+            throw posixError()
+        }
+        let parent = try openPrivateDirectory()
+        defer { close(parent) }
+        let temporary = UUID().uuidString + ".tmp"
+        let descriptor = openat(parent, temporary, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard descriptor >= 0 else { throw posixError() }
+        var renamed = false
+        defer { if !renamed { unlinkat(parent, temporary, 0) } }
+        let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        try file.write(contentsOf: data)
+        try file.close()
+        guard renameat(parent, temporary, parent, Self.filename) == 0 else {
+            throw posixError()
+        }
+        renamed = true
+    }
+
+    private func openPrivateDirectory() throws -> Int32 {
+        let descriptor = open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        guard descriptor >= 0 else { throw posixError() }
+        guard privateStat(descriptor, type: S_IFDIR) != nil else {
+            close(descriptor)
+            throw CocoaError(.fileReadNoPermission)
+        }
+        return descriptor
+    }
+
+    private func privateStat(_ descriptor: Int32, type: mode_t) -> stat? {
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, info.st_uid == getuid(),
+              (info.st_mode & S_IFMT) == type, (info.st_mode & 0o077) == 0 else { return nil }
+        return info
+    }
+
+    private func posixError() -> POSIXError {
+        POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }
 }

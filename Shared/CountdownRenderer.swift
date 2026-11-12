@@ -4,12 +4,82 @@ import UniformTypeIdentifiers
 
 @MainActor
 struct CountdownRenderer {
+    struct VisualState: Equatable {
+        let palette: Palette
+        let title: String
+        let size: CGSize
+        let backingScale: CGFloat
+        let insets: GridInsets
+        let tiles: Int
+        let elapsedHours: Int
+        let daysRemaining: Int
+        let hoursRemaining: Int
+        let percent: Int
+        let complete: Bool
+        let barPixels: CGFloat
+    }
+
+    private struct GridKey: Equatable {
+        let size: CGSize
+        let panel: CGRect
+        let count: Int
+        let insets: GridInsets
+    }
+
+    private static let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+    private static var grids: [(key: GridKey, tiles: [CGRect])] = []
+
     let settings: CountdownSettings
     let snapshot: CountdownSnapshot
     var insets = GridInsets()
 
+    private var title: String { settings.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private func panel(in size: CGSize, scale: CGFloat, heroFont: NSFont) -> CGRect {
+        let heroWidth = (snapshot.daysText as NSString).size(withAttributes: [.font: heroFont]).width
+        let width = min(size.width * 0.62, max(260 * scale, heroWidth + 54 * scale))
+        let height = (snapshot.isComplete ? 133.0 : 175.0) * scale + (title.isEmpty ? 0 : 23 * scale)
+        return CGRect(x: (size.width - width) / 2, y: (size.height - height) / 2, width: width, height: height)
+    }
+
+    func visualState(in size: CGSize, backingScale: CGFloat) -> VisualState {
+        var barPixels: CGFloat = 0
+        if snapshot.progress > 0, !snapshot.isComplete, size.width > 0, size.height > 0 {
+            let scale = min(size.width / 900, size.height / 525)
+            let font = NSFont.monospacedDigitSystemFont(ofSize: 64 * scale, weight: .medium)
+            let panel = panel(in: size, scale: scale, heroFont: font)
+            barPixels = progressPixels(trackWidth: panel.width * 0.70, backingScale: backingScale)
+        }
+        return VisualState(palette: settings.palette, title: title, size: size, backingScale: backingScale, insets: insets,
+                           tiles: snapshot.tileCount, elapsedHours: snapshot.isComplete ? 0 : snapshot.elapsedHours,
+                           daysRemaining: snapshot.daysRemaining, hoursRemaining: snapshot.hoursRemaining,
+                           percent: snapshot.percent, complete: snapshot.isComplete, barPixels: barPixels)
+    }
+
+    func pngVisualState(in size: CGSize, backingScale: CGFloat) -> VisualState {
+        let scale = size.width > 0 ? (size.width * backingScale).rounded() / size.width : backingScale
+        return visualState(in: size, backingScale: scale)
+    }
+
+    private func progressPixels(trackWidth: CGFloat, backingScale: CGFloat) -> CGFloat {
+        (trackWidth * snapshot.progress * backingScale).rounded(.down)
+    }
+
+    private func tiles(in size: CGSize, around panel: CGRect) -> [CGRect] {
+        let key = GridKey(size: size, panel: panel, count: snapshot.tileCount, insets: insets)
+        if let index = Self.grids.firstIndex(where: { $0.key == key }) {
+            let entry = Self.grids.remove(at: index)
+            Self.grids.append(entry)
+            return entry.tiles
+        }
+        let tiles = CountdownGrid.tiles(in: size, around: panel, count: snapshot.tileCount, insets: insets)
+        if Self.grids.count == 8 { Self.grids.removeFirst() }
+        Self.grids.append((key, tiles))
+        return tiles
+    }
+
     // The view and the PNG use the same top-left coordinate system.
-    func draw(in size: CGSize, context: CGContext) {
+    func draw(in size: CGSize, context: CGContext, backingScale: CGFloat = 1) {
         guard size.width > 0, size.height > 0 else { return }
         let palette = settings.palette
         let background = NSColor(rgb: palette.background)
@@ -25,15 +95,11 @@ struct CountdownRenderer {
         drawGlow(empty, opacity: 0.26, at: CGPoint(x: size.width * 0.76, y: size.height * 0.95), in: size, context: context)
 
         let scale = min(size.width / 900, size.height / 525)
-        let title = settings.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = self.title
         let heroFont = NSFont.monospacedDigitSystemFont(ofSize: 64 * scale, weight: .medium)
-        let heroWidth = (snapshot.daysText as NSString).size(withAttributes: [.font: heroFont]).width
-        let panelWidth = min(size.width * 0.62, max(260 * scale, heroWidth + 54 * scale))
-        let panelHeight = (snapshot.isComplete ? 133.0 : 175.0) * scale + (title.isEmpty ? 0 : 23 * scale)
-        let panel = CGRect(x: (size.width - panelWidth) / 2, y: (size.height - panelHeight) / 2,
-                           width: panelWidth, height: panelHeight)
+        let panel = panel(in: size, scale: scale, heroFont: heroFont)
         let rim = NSColor(rgb: lightBackground ? 0x0c1b1f : 0xf2fdff).withAlphaComponent(0.21)
-        let tiles = CountdownGrid.tiles(in: size, around: panel, count: snapshot.tileCount, insets: insets)
+        let tiles = tiles(in: size, around: panel)
         for (index, tile) in tiles.enumerated() {
             let fraction = snapshot.fill(at: index)
             let radius = min(6 * scale, tile.width * 0.22)
@@ -113,14 +179,16 @@ struct CountdownRenderer {
         context.setFillColor(empty.cgColor)
         context.fill(track)
         context.setFillColor(fill.cgColor)
-        context.fill(CGRect(x: track.minX, y: track.minY, width: track.width * snapshot.progress, height: track.height))
+        let fillWidth = snapshot.isComplete ? track.width :
+            progressPixels(trackWidth: track.width, backingScale: backingScale) / backingScale
+        context.fill(CGRect(x: track.minX, y: track.minY, width: fillWidth, height: track.height))
         context.restoreGState()
     }
 
     func writePNG(to url: URL, size: CGSize, backingScale: CGFloat) throws {
         let width = Int((size.width * backingScale).rounded())
         let height = Int((size.height * backingScale).rounded())
-        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+        guard let space = Self.colorSpace,
               let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
                                       bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else {
             throw CocoaError(.fileWriteUnknown)
@@ -129,7 +197,7 @@ struct CountdownRenderer {
         context.scaleBy(x: CGFloat(width) / size.width, y: -CGFloat(height) / size.height)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
-        draw(in: size, context: context)
+        draw(in: size, context: context, backingScale: CGFloat(width) / size.width)
         NSGraphicsContext.restoreGraphicsState()
         guard let image = context.makeImage(),
               let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
@@ -151,7 +219,7 @@ struct CountdownRenderer {
     }
 
     private func gradient(_ color: NSColor, opacity: CGFloat) -> CGGradient? {
-        CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
+        CGGradient(colorsSpace: Self.colorSpace,
                    colors: [color.withAlphaComponent(opacity).cgColor, color.withAlphaComponent(0).cgColor] as CFArray,
                    locations: [0, 1])
     }
