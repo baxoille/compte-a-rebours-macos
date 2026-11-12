@@ -32,26 +32,38 @@ private final class CountdownAppDelegate: NSObject, NSApplicationDelegate {
 private enum ScreenSaverInstallation: Equatable {
     case missing, updateRequired, available
 
-    private static let minimumVersion = 6
+    private static let minimumVersion = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)
+        .flatMap(Int.init) ?? 6
 
-    static func detect() -> Self {
-        let files = FileManager.default
-        for domain: FileManager.SearchPathDomainMask in [.userDomainMask, .localDomainMask] {
-            for library in files.urls(for: .libraryDirectory, in: domain) {
-                let folder = library.appending(path: "Screen Savers", directoryHint: .isDirectory)
-                let modules = (try? files.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-                for module in modules where module.pathExtension.lowercased() == "saver" {
-                    guard let version = version(of: module) else { continue }
-                    return version >= minimumVersion ? .available : .updateRequired
-                }
-            }
-        }
-        return .missing
+    static func detect(
+        userLibraries: [URL] = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask),
+        localLibraries: [URL] = FileManager.default.urls(for: .libraryDirectory, in: .localDomainMask)
+    ) -> Self {
+        // An outdated user installation can coexist with a newer system installation.
+        // Prefer the newest user copy, then consider the system library if there is none.
+        guard let latest = newestVersion(in: userLibraries) ?? newestVersion(in: localLibraries) else { return .missing }
+        return latest >= minimumVersion ? .available : .updateRequired
     }
 
-    static func compiledModule(beside app: URL = Bundle.main.bundleURL) -> URL? {
-        let module = app.deletingLastPathComponent().appending(path: "CompteAReboursSaver.saver", directoryHint: .isDirectory)
-        guard let version = version(of: module), version >= minimumVersion else { return nil }
+    private static func newestVersion(in libraries: [URL]) -> Int? {
+        var versions: [Int] = []
+        for library in libraries {
+            let folder = library.appending(path: "Screen Savers", directoryHint: .isDirectory)
+            let modules = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+            for module in modules where module.pathExtension.lowercased() == "saver" {
+                if let version = version(of: module) { versions.append(version) }
+            }
+        }
+        return versions.max()
+    }
+
+    static func compiledModule(in app: Bundle = .main) -> URL? {
+        guard let plugins = app.builtInPlugInsURL else { return nil }
+        let module = plugins.appending(path: "CompteAReboursSaver.saver", directoryHint: .isDirectory)
+        let expected = app.bundleURL.resolvingSymlinksInPath().appending(path: "Contents/PlugIns/CompteAReboursSaver.saver")
+        guard module.resolvingSymlinksInPath().path == expected.path,
+              let appVersion = (app.object(forInfoDictionaryKey: "CFBundleVersion") as? String).flatMap(Int.init),
+              let version = version(of: module), version == appVersion else { return nil }
         return module
     }
 
@@ -83,19 +95,27 @@ private final class CountdownEditor: ObservableObject {
     private var didLoad = false
     private let preferences = CountdownPreferences()
     private var screenSaverPreview: ScreenSaverPreviewWindow?
+    var previewSettings: CountdownSettings {
+        draft.validationError == nil ? draft : (stored ?? .initial())
+    }
 
     init() {
-        let settings = preferences.load()
-        stored = settings
+        let settings = preferences.loadDraft()
+        stored = settings.flatMap { $0.validationError == nil ? $0 : nil }
         draft = settings ?? .initial()
     }
 
     func load(colorScheme: ColorScheme) -> CountdownSettings? {
         if !didLoad {
             didLoad = true
-            if stored == nil {
-                draft.palette = colorScheme == .dark ? .dark : .light
-                _ = save()
+            // Keep a legacy title editable along with its dates and palette.
+            if stored == nil, draft.validationError == nil {
+                if preferences.hasSavedFile {
+                    saveError = "Les réglages existants ne sont pas lisibles. Enregistrez pour les remplacer."
+                } else {
+                    draft.palette = colorScheme == .dark ? .dark : .light
+                    _ = save()
+                }
             }
         }
         return stored
@@ -125,11 +145,12 @@ private final class CountdownEditor: ObservableObject {
             screenSaverError = "Cet écran est déconnecté."
             return
         }
-        let settings = stored ?? .initial()
+        let settings = previewSettings
         guard let snapshot = CountdownSnapshot(settings: settings, now: .now) else { return }
         screenSaverPreview?.close()
         let window = ScreenSaverPreviewWindow(screen: screen,
                                                renderer: CountdownRenderer(settings: settings, snapshot: snapshot))
+        window.onClose = { [weak self] in self?.screenSaverPreview = nil }
         screenSaverPreview = window
         window.makeKeyAndOrderFront(nil)
     }
@@ -199,7 +220,7 @@ private struct CountdownWindow: View {
     private var preview: some View {
         let screenSize = display?.size ?? CGSize(width: 1440, height: 1000)
         let insets = editor.mode == .desktop ? (display?.insets ?? GridInsets()) : GridInsets()
-        let settings = editor.draft.validationError == nil ? editor.draft : (editor.stored ?? .initial())
+        let settings = editor.previewSettings
         return GeometryReader { proxy in
             let scale = min(proxy.size.width / screenSize.width, proxy.size.height / screenSize.height)
             TimelineView(.periodic(from: .now, by: 1)) { timeline in
@@ -295,7 +316,7 @@ private struct CountdownWindow: View {
                         }
                     }
                 } else {
-                    Text("Le fichier se trouve dans les produits de compilation de Xcode.")
+                    Text("Le module intégré est introuvable. Recompilez l’application dans Xcode.")
                         .foregroundStyle(.secondary)
                 }
             } else {
@@ -473,6 +494,7 @@ private struct CountdownWindow: View {
 }
 
 private final class ScreenSaverPreviewWindow: NSWindow {
+    var onClose: (() -> Void)?
     override var canBecomeKey: Bool { true }
 
     init(screen: NSScreen, renderer: CountdownRenderer) {
@@ -495,6 +517,13 @@ private final class ScreenSaverPreviewWindow: NSWindow {
     }
 
     override func cancelOperation(_ sender: Any?) { close() }
+
+    override func close() {
+        super.close()
+        let didClose = onClose
+        onClose = nil
+        didClose?()
+    }
 }
 
 private struct CountdownPreview: NSViewRepresentable {
@@ -503,17 +532,27 @@ private struct CountdownPreview: NSViewRepresentable {
     func makeNSView(context: Context) -> RenderView { RenderView() }
 
     func updateNSView(_ view: RenderView, context: Context) {
-        view.renderer = renderer
-        view.needsDisplay = true
+        view.update(renderer)
     }
 
     final class RenderView: NSView {
-        var renderer: CountdownRenderer?
+        private var renderer: CountdownRenderer?
+        private var visualState: CountdownRenderer.VisualState?
+        private var backingScale: CGFloat { window?.backingScaleFactor ?? 1 }
         override var isFlipped: Bool { true }
 
+        func update(_ renderer: CountdownRenderer) {
+            self.renderer = renderer
+            let next = renderer.visualState(in: bounds.size, backingScale: backingScale)
+            if next != visualState {
+                visualState = next
+                needsDisplay = true
+            }
+        }
+
         override func draw(_ dirtyRect: NSRect) {
-            guard let context = NSGraphicsContext.current?.cgContext else { return }
-            renderer?.draw(in: bounds.size, context: context)
+            guard let renderer, let context = NSGraphicsContext.current?.cgContext else { return }
+            renderer.draw(in: bounds.size, context: context, backingScale: backingScale)
         }
     }
 }

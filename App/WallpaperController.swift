@@ -130,17 +130,6 @@ final class WallpaperController: ObservableObject {
         }
     }
 
-    private struct Rendered: Equatable {
-        let settings: CountdownSettings
-        let minute: Double
-        let hours: Int
-        let elapsedHours: Int
-        let complete: Bool
-        let size: CGSize
-        let scale: CGFloat
-        let insets: GridInsets
-    }
-
     @Published private(set) var displays: [WallpaperDisplay]
     @Published private(set) var selected: String?
     @Published private(set) var statuses: [String: DisplayStatus] = [:]
@@ -153,7 +142,7 @@ final class WallpaperController: ObservableObject {
     private let stateKey = "wallpaperState"
     private let directory: URL
     private var state: StoredState
-    private var rendered: [UUID: Rendered] = [:]
+    private var rendered: [UUID: CountdownRenderer.VisualState] = [:]
     private var settings: CountdownSettings?
     private var observations: Set<AnyCancellable> = []
 
@@ -188,17 +177,24 @@ final class WallpaperController: ObservableObject {
         let current = system.image(on: display.id)
         let existing = installation(on: display.id, matching: current, in: state.installations + state.pending)
         let folder = existing?.folder ?? UUID()
+        var unpublishedFolder = existing == nil
+        defer {
+            // Only a new folder never handed to macOS is known to be unused by every Space.
+            if unpublishedFolder { try? FileManager.default.removeItem(at: installationDirectory(folder)) }
+            updateStatuses()
+        }
         let original = existing?.original ?? captureOriginal(current, on: display.id, in: folder)
         var next = Installation(displayID: display.id, folder: folder, slot: existing?.slot ?? 1, original: original)
-        defer { updateStatuses() }
         do {
-            let signature = signature(settings: settings, snapshot: snapshot, display: display, now: now)
+            let renderer = CountdownRenderer(settings: settings, snapshot: snapshot, insets: display.insets)
+            let signature = renderer.pngVisualState(in: display.size, backingScale: display.scale)
             next.slot = 1 - next.slot
-            try write(next, snapshot: snapshot, signature: signature)
+            try write(next, renderer: renderer, display: display)
             guard sameImage(system.image(on: display.id), current) else {
                 report("Le bureau ou son fond a changé. Cliquez à nouveau sur Appliquer.", on: display.id)
                 return
             }
+            unpublishedFolder = false
             try set(next)
             state.installations.removeAll { $0.folder == folder }
             state.installations.append(next)
@@ -247,12 +243,13 @@ final class WallpaperController: ObservableObject {
             }
             guard let settings, let snapshot,
                   var active = installation(on: display.id, matching: current, in: state.installations) else { continue }
-            let signature = signature(settings: settings, snapshot: snapshot, display: display, now: now)
+            let renderer = CountdownRenderer(settings: settings, snapshot: snapshot, insets: display.insets)
+            let signature = renderer.pngVisualState(in: display.size, backingScale: display.scale)
             guard signature != rendered[active.folder] else { continue }
             do {
                 let previous = active
                 active.slot = 1 - active.slot
-                try write(active, snapshot: snapshot, signature: signature)
+                try write(active, renderer: renderer, display: display)
                 // The active Space or its wallpaper may have changed during rendering.
                 guard owns(system.image(on: display.id), previous) else { continue }
                 try set(active)
@@ -415,19 +412,12 @@ final class WallpaperController: ObservableObject {
         installationDirectory(installation.folder).appending(path: "Compte-à-rebours-\(installation.slot).png")
     }
 
-    private func signature(settings: CountdownSettings, snapshot: CountdownSnapshot, display: WallpaperDisplay, now: Date) -> Rendered {
-        let minute = snapshot.progress > 0 && !snapshot.isComplete ? floor(now.timeIntervalSinceReferenceDate / 60) : 0
-        return Rendered(settings: settings, minute: minute, hours: snapshot.hoursRemaining, elapsedHours: snapshot.elapsedHours,
-                        complete: snapshot.isComplete, size: display.size, scale: display.scale, insets: display.insets)
-    }
-
-    private func write(_ installation: Installation, snapshot: CountdownSnapshot, signature: Rendered) throws {
+    private func write(_ installation: Installation, renderer: CountdownRenderer, display: WallpaperDisplay) throws {
         let url = imageURL(for: installation)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let temporary = url.deletingLastPathComponent().appending(path: UUID().uuidString + ".png")
         defer { try? FileManager.default.removeItem(at: temporary) }
-        try CountdownRenderer(settings: signature.settings, snapshot: snapshot, insets: signature.insets)
-            .writePNG(to: temporary, size: signature.size, backingScale: signature.scale)
+        try renderer.writePNG(to: temporary, size: display.size, backingScale: display.scale)
         if FileManager.default.fileExists(atPath: url.path) {
             _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
         } else {

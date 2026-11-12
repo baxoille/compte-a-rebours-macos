@@ -5,6 +5,7 @@ final class CountdownScreenSaver: ScreenSaverView {
     private let preferences = CountdownPreferences()
     private var settings: CountdownSettings?
     private var snapshot: CountdownSnapshot?
+    private var visualState: CountdownRenderer.VisualState?
     private var lastRead: Date?
 
     override var isFlipped: Bool { true }
@@ -36,7 +37,8 @@ final class CountdownScreenSaver: ScreenSaverView {
         // macOS selects which displays host this module. Every hosted view renders the countdown.
         if let settings, let snapshot,
            let context = NSGraphicsContext.current?.cgContext {
-            CountdownRenderer(settings: settings, snapshot: snapshot).draw(in: bounds.size, context: context)
+            CountdownRenderer(settings: settings, snapshot: snapshot)
+                .draw(in: bounds.size, context: context, backingScale: window?.backingScaleFactor ?? 1)
             return
         }
         NSColor(rgb: Palette.dark.background).setFill()
@@ -52,14 +54,19 @@ final class CountdownScreenSaver: ScreenSaverView {
     }
 
     private func update(now: Date) {
-        let previous = settings
         if lastRead.map({ abs(now.timeIntervalSince($0)) >= 5 }) ?? true {
             settings = preferences.load()
             lastRead = now
         }
-        let next = settings.flatMap { CountdownSnapshot(settings: $0, now: now) }
-        if next != snapshot || previous != settings {
-            snapshot = next
+        snapshot = settings.flatMap { CountdownSnapshot(settings: $0, now: now) }
+        let next = settings.flatMap { settings in
+            snapshot.map {
+                CountdownRenderer(settings: settings, snapshot: $0)
+                    .visualState(in: bounds.size, backingScale: window?.backingScaleFactor ?? 1)
+            }
+        }
+        if next != visualState {
+            visualState = next
             needsDisplay = true
         }
     }
