@@ -1,5 +1,7 @@
 import AppKit
 import Combine
+import CryptoKit
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -92,6 +94,19 @@ private final class CountdownEditor: ObservableObject {
     @Published private(set) var screenSaverInstallation = ScreenSaverInstallation.detect()
     @Published private(set) var screenSaverError: String?
     @Published private(set) var isLaunchingScreenSaver = false
+    @Published private(set) var backgroundStatus = CountdownEditor.wallpaperService.status
+    @Published private(set) var backgroundError: String?
+    private static let wallpaperService = SMAppService.agent(plistName: "fr.comptearebours.macos.wallpaper.plist")
+    private static let backgroundSetupKey = "wallpaperBackgroundSetupAttempted"
+    private static let backgroundExecutableKey = "wallpaperBackgroundExecutableHash"
+    private static let backgroundBundleKey = "wallpaperBackgroundBundlePath"
+    private var backgroundBundlePath: String { Bundle.main.bundleURL.resolvingSymlinksInPath().path }
+    private lazy var backgroundExecutableHash: String? = {
+        guard let executable = Bundle.main.executableURL?.deletingLastPathComponent()
+            .appending(path: "CompteAReboursWallpaper"),
+              let data = try? Data(contentsOf: executable, options: .mappedIfSafe) else { return nil }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }()
     private var didLoad = false
     private let preferences = CountdownPreferences()
     private var screenSaverPreview: ScreenSaverPreviewWindow?
@@ -105,7 +120,7 @@ private final class CountdownEditor: ObservableObject {
         draft = settings ?? .initial()
     }
 
-    func load(colorScheme: ColorScheme) -> CountdownSettings? {
+    func load(colorScheme: ColorScheme) {
         if !didLoad {
             didLoad = true
             // Keep a legacy title editable along with its dates and palette.
@@ -118,7 +133,6 @@ private final class CountdownEditor: ObservableObject {
                 }
             }
         }
-        return stored
     }
 
     func save() -> Bool {
@@ -137,6 +151,59 @@ private final class CountdownEditor: ObservableObject {
 
     func refreshScreenSaverInstallation() {
         screenSaverInstallation = .detect()
+        backgroundStatus = Self.wallpaperService.status
+    }
+
+    func setUpWallpaperBackground(shouldEnable: Bool) {
+        let defaults = UserDefaults.standard
+        let registeredPath = defaults.string(forKey: Self.backgroundBundleKey)
+        // An ad-hoc signed helper's registered code requirement changes with its executable.
+        if Self.wallpaperService.status == .enabled, let hash = backgroundExecutableHash,
+           registeredPath == nil || registeredPath == backgroundBundlePath,
+           defaults.string(forKey: Self.backgroundExecutableKey) != hash {
+            setWallpaperBackground(true, replacingRegistration: true)
+        } else if shouldEnable, !defaults.bool(forKey: Self.backgroundSetupKey) {
+            setWallpaperBackground(true)
+        }
+    }
+
+    func setWallpaperBackground(_ enabled: Bool, replacingRegistration: Bool = false) {
+        backgroundError = nil
+        UserDefaults.standard.set(true, forKey: Self.backgroundSetupKey)
+        let service = Self.wallpaperService
+        var attemptedRegistration = false
+        do {
+            if enabled {
+                if replacingRegistration { try service.unregister() }
+                if service.status == .notRegistered || service.status == .notFound {
+                    attemptedRegistration = true
+                    try service.register()
+                }
+            } else {
+                try service.unregister()
+            }
+        } catch {
+            if !enabled || service.status != .requiresApproval {
+                backgroundError = "Impossible de modifier l’actualisation en arrière-plan. \(error.localizedDescription)"
+            }
+        }
+        backgroundStatus = service.status
+        if attemptedRegistration, backgroundError == nil,
+           backgroundStatus == .enabled || backgroundStatus == .requiresApproval {
+            UserDefaults.standard.set(backgroundExecutableHash, forKey: Self.backgroundExecutableKey)
+            UserDefaults.standard.set(backgroundBundlePath, forKey: Self.backgroundBundleKey)
+        }
+        // Replace the earlier login item that opened the app's window.
+        if backgroundStatus == .enabled || backgroundStatus == .requiresApproval {
+            let legacy = SMAppService.mainApp
+            if legacy.status == .enabled || legacy.status == .requiresApproval {
+                do {
+                    try legacy.unregister()
+                } catch {
+                    backgroundError = "Impossible de retirer l’ancien démarrage de l’application. \(error.localizedDescription)"
+                }
+            }
+        }
     }
 
     func previewScreenSaver(on display: WallpaperDisplay) {
@@ -207,7 +274,9 @@ private struct CountdownWindow: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
-            if let settings = editor.load(colorScheme: colorScheme) { wallpaper.use(settings: settings) }
+            editor.load(colorScheme: colorScheme)
+            wallpaper.refresh()
+            editor.setUpWallpaperBackground(shouldEnable: wallpaper.hasInstallations || SMAppService.mainApp.status == .enabled)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             editor.refreshScreenSaverInstallation()
@@ -434,7 +503,9 @@ private struct CountdownWindow: View {
     }
 
     private func apply(to monitor: WallpaperDisplay) {
-        if editor.save() { wallpaper.apply(to: monitor, settings: editor.draft) }
+        guard editor.save() else { return }
+        wallpaper.apply(to: monitor, settings: editor.draft)
+        editor.setUpWallpaperBackground(shouldEnable: wallpaper.hasInstallations)
     }
 
     private func wallpaperStatus(_ status: WallpaperController.DisplayStatus) -> some View {
@@ -476,10 +547,33 @@ private struct CountdownWindow: View {
                 .fixedSize()
                 Spacer()
                 Button("Enregistrer") {
-                    if editor.save() { wallpaper.use(settings: editor.draft) }
+                    if editor.save() { wallpaper.refresh() }
                 }
                 .disabled(editor.draft.validationError != nil || editor.stored == editor.draft)
             }
+            Divider()
+            Toggle("Actualiser le fond en arrière-plan", isOn: Binding(
+                get: { editor.backgroundStatus == .enabled },
+                set: { editor.setWallpaperBackground($0) }
+            ))
+            if editor.backgroundStatus == .requiresApproval {
+                Text("Autorisez Compte à rebours à s’exécuter en arrière-plan dans Réglages Système.")
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("Ouvrir les réglages de macOS") { SMAppService.openSystemSettingsLoginItems() }
+                    Button("Annuler la demande") { editor.setWallpaperBackground(false) }
+                }
+            } else if editor.backgroundStatus == .notFound {
+                Text("macOS ne trouve pas le module d’actualisation. Placez l’application dans Applications, puis réessayez.")
+                    .foregroundStyle(.secondary)
+            } else if editor.backgroundStatus == .enabled {
+                Text("Le compte à rebours du bureau reste à jour après avoir quitté l’application.")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Activez cette option pour garder le compte à rebours à jour après avoir quitté l’application.")
+                    .foregroundStyle(.secondary)
+            }
+            if let error = editor.backgroundError { Text(error).foregroundStyle(.red) }
         }
         .padding(14)
         .background(.quaternary.opacity(0.36), in: .rect(cornerRadius: 12))

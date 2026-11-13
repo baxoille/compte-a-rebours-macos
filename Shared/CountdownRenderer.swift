@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 @MainActor
 struct CountdownRenderer {
-    struct VisualState: Equatable {
+    struct VisualState: Codable, Equatable {
         let palette: Palette
         let title: String
         let size: CGSize

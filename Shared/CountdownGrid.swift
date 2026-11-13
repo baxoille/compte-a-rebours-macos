@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-struct GridInsets: Equatable {
+struct GridInsets: Codable, Equatable {
     var horizontal: CGFloat = 0
     var vertical: CGFloat = 0
 }

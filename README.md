@@ -12,9 +12,9 @@ Le projet cible macOS 14 ou ultérieur. Il se compile avec Xcode, sans compte d�
 
 1. Clonez le dépôt depuis son URL, puis ouvrez `CompteARebours.xcodeproj`.
 2. Sélectionnez le schéma **CompteARebours** et la destination **My Mac**.
-3. Lancez avec **⌘R**. Le schéma construit l’application et y embarque le module `.saver`.
+3. Lancez avec **⌘R**. Le schéma construit l’application et y embarque le module `.saver` et l’agent d’actualisation du fond d’écran.
 
-Depuis le dossier du projet, vous pouvez aussi compiler les deux produits en ligne de commande.
+Depuis le dossier du projet, vous pouvez aussi compiler l’ensemble en ligne de commande.
 
 ```sh
 xcodebuild -project CompteARebours.xcodeproj \
@@ -25,7 +25,9 @@ open DerivedData/Build/Products/Debug/CompteARebours.app
 
 ## Fond d’écran
 
-Ouvrez **Réglages** dans l’application et enregistrez les dates et la palette. En mode **Bureau**, chaque carte indique si le compte à rebours est appliqué sur le bureau actif de l’écran. Cliquez sur **Appliquer** sur chaque écran souhaité. Cliquez sur le nom d’un écran pour en afficher l’aperçu. Le panneau reste centré et la grille tient compte du Dock. Le fond s’actualise pendant que l’application tourne, même si sa fenêtre est fermée. Au réveil, le compteur se recalcule à partir de l’heure réelle.
+Ouvrez **Réglages** dans l’application et enregistrez les dates et la palette. En mode **Bureau**, chaque carte indique si le compte à rebours est appliqué sur le bureau actif de l’écran. Cliquez sur **Appliquer** sur chaque écran souhaité. Cliquez sur le nom d’un écran pour en afficher l’aperçu. Le panneau reste centré et la grille tient compte du Dock.
+
+L’app propose l’actualisation en arrière-plan quand vous appliquez le compte à rebours. Une fois l’agent autorisé, le fond s’actualise même après **⌘Q**. L’agent redémarre à l’ouverture de session sans ouvrir de fenêtre et recalcule le compteur au réveil à partir de l’heure réelle. **Réglages** › **Actualiser le fond en arrière-plan** permet de désactiver l’agent ou d’ouvrir les réglages de macOS si une autorisation est demandée. Placez l’application dans un emplacement durable comme `/Applications`. Ouvrez la nouvelle version une fois après avoir remplacé une compilation locale pour renouveler l’enregistrement de l’agent.
 
 **Rétablir** agit sur le bureau actif de la carte. L’application remet l’image précédente enregistrée si elle est réutilisable. À défaut, elle applique le fond par défaut de macOS s’il est disponible. Une image statique ne permet pas de rétablir les options d’un fond animé ou d’un diaporama.
 
@@ -53,7 +55,7 @@ L’application fonctionne sans réseau ni télémétrie. Elle s’exécute avec
 
 ## Retirer l’application
 
-1. Sur chaque bureau où le compte à rebours est appliqué, cliquez sur **Rétablir** sur la carte correspondante ou choisissez un fond dans Réglages Système. Quittez ensuite l’application.
+1. Sur chaque bureau où le compte à rebours est appliqué, cliquez sur **Rétablir** sur la carte correspondante ou choisissez un fond dans Réglages Système. Désactivez **Actualiser le fond en arrière-plan**, puis quittez l’application.
 2. Choisissez un autre économiseur dans Réglages Système. Retirez `CompteAReboursSaver.saver` de `~/Library/Screen Savers/`, puis mettez l’application à la corbeille.
 3. Pour effacer aussi les données, retirez `~/Library/Application Support/CompteARebours/` et le dossier `/Users/Shared/fr.comptearebours.macos.<UID>` appartenant à votre compte. `id -u` indique votre UID. Si le fond restauré provient d’une copie `Fond-précédent` dans le premier dossier, copiez l’image ailleurs et sélectionnez cette copie dans Réglages Système avant d’effacer les données. L’état de restauration peut être supprimé avec `defaults delete fr.comptearebours.macos wallpaperState` après avoir quitté l’app.
 
