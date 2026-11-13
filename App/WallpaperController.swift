@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import CoreGraphics
+import Darwin
 import ImageIO
 
 struct WallpaperDisplay: Equatable, Identifiable {
@@ -98,6 +99,8 @@ final class WallpaperController: ObservableObject {
         let folder: UUID
         var slot: Int
         let original: OriginalImage?
+        var rendered: CountdownRenderer.VisualState?
+        var rendererVersion: Int?
     }
 
     private struct StoredState: Codable {
@@ -137,43 +140,58 @@ final class WallpaperController: ObservableObject {
     @Published private(set) var hasDisconnectedDisplay = false
     @Published private(set) var hasSharedWallpaper = false
 
+    var hasInstallations: Bool { !state.installations.isEmpty }
+
     private let system: any WallpaperSystem
-    private let defaults: UserDefaults
-    private let stateKey = "wallpaperState"
+    private let preferenceDomain: CFString
+    private let stateKey = "wallpaperState" as CFString
     private let directory: URL
-    private var state: StoredState
-    private var rendered: [UUID: CountdownRenderer.VisualState] = [:]
-    private var settings: CountdownSettings?
+    private let loadSettings: () -> CountdownSettings?
+    private let tracksStatus: Bool
+    // Increment when the PNG drawing changes independently of VisualState.
+    private let rendererVersion = 1
+    private var state = StoredState()
     private var observations: Set<AnyCancellable> = []
 
-    init(system: (any WallpaperSystem)? = nil, defaults: UserDefaults = .standard,
-         directory: URL = URL.applicationSupportDirectory.appending(path: "CompteARebours/Fonds", directoryHint: .isDirectory)) {
+    init(system: (any WallpaperSystem)? = nil, preferenceDomain: String = "fr.comptearebours.macos",
+         directory: URL = URL.applicationSupportDirectory.appending(path: "CompteARebours/Fonds", directoryHint: .isDirectory),
+         tracksStatus: Bool = true, loadSettings: @escaping () -> CountdownSettings? = CountdownPreferences().load) {
         let system = system ?? MacWallpaperSystem()
         self.system = system
-        self.defaults = defaults
+        self.preferenceDomain = preferenceDomain as CFString
         self.directory = directory
+        self.tracksStatus = tracksStatus
+        self.loadSettings = loadSettings
         displays = system.displays
-        let data = defaults.data(forKey: stateKey)
-        state = data.flatMap { try? JSONDecoder().decode(StoredState.self, from: $0) } ?? StoredState()
-        selected = state.selected ?? displays.first?.id
-        updateStatuses()
-        observeChanges()
-    }
-
-    func use(settings: CountdownSettings) {
-        self.settings = settings
         refresh()
+        observeChanges()
     }
 
     func select(_ id: String) {
         selected = id
-        state.selected = id
-        persist()
+        do {
+            try withCurrentState {
+                state.selected = id
+                try persist()
+            }
+        } catch {
+            report(error.localizedDescription, on: id)
+        }
     }
 
     func apply(to display: WallpaperDisplay, settings: CountdownSettings, now: Date = .now) {
         guard let snapshot = CountdownSnapshot(settings: settings, now: now) else { return }
-        self.settings = settings
+        defer { updateStatuses() }
+        do {
+            try withCurrentState {
+                try apply(to: display, settings: settings, snapshot: snapshot)
+            }
+        } catch {
+            report("Impossible d’appliquer le fond. \(error.localizedDescription)", on: display.id)
+        }
+    }
+
+    private func apply(to display: WallpaperDisplay, settings: CountdownSettings, snapshot: CountdownSnapshot) throws {
         let current = system.image(on: display.id)
         let existing = installation(on: display.id, matching: current, in: state.installations + state.pending)
         let folder = existing?.folder ?? UUID()
@@ -181,59 +199,69 @@ final class WallpaperController: ObservableObject {
         defer {
             // Only a new folder never handed to macOS is known to be unused by every Space.
             if unpublishedFolder { try? FileManager.default.removeItem(at: installationDirectory(folder)) }
-            updateStatuses()
         }
         let original = existing?.original ?? captureOriginal(current, on: display.id, in: folder)
         var next = Installation(displayID: display.id, folder: folder, slot: existing?.slot ?? 1, original: original)
-        do {
-            let renderer = CountdownRenderer(settings: settings, snapshot: snapshot, insets: display.insets)
-            let signature = renderer.pngVisualState(in: display.size, backingScale: display.scale)
-            next.slot = 1 - next.slot
-            try write(next, renderer: renderer, display: display)
-            guard sameImage(system.image(on: display.id), current) else {
-                report("Le bureau ou son fond a changé. Cliquez à nouveau sur Appliquer.", on: display.id)
-                return
-            }
-            unpublishedFolder = false
-            try set(next)
-            state.installations.removeAll { $0.folder == folder }
-            state.installations.append(next)
-            state.pending.removeAll { $0.folder == folder }
-            rendered[folder] = signature
-            persist()
-            report(nil, on: display.id)
-        } catch {
-            report("Impossible d’appliquer le fond. \(error.localizedDescription)", on: display.id)
+        let renderer = CountdownRenderer(settings: settings, snapshot: snapshot, insets: display.insets)
+        next.slot = 1 - next.slot
+        next.rendered = renderer.pngVisualState(in: display.size, backingScale: display.scale)
+        next.rendererVersion = rendererVersion
+        try write(next, renderer: renderer, display: display)
+        guard sameImage(system.image(on: display.id), current) else {
+            report("Le bureau ou son fond a changé. Cliquez à nouveau sur Appliquer.", on: display.id)
+            return
         }
+        unpublishedFolder = false
+        try set(next)
+        state.installations.removeAll { $0.folder == folder }
+        state.installations.append(next)
+        state.pending.removeAll { $0.folder == folder }
+        try persist()
+        report(nil, on: display.id)
     }
 
     func restore(on display: WallpaperDisplay) {
         defer { updateStatuses() }
-        guard let current = system.image(on: display.id) else { return }
         do {
-            if let active = installation(on: display.id, matching: current, in: state.installations + state.pending) {
-                guard try restore(active, allowDefault: true) else { return }
-                remove(active)
-            } else {
-                guard isGenerated(current), try restoreDefault(on: display.id, replacing: current) else { return }
+            try withCurrentState {
+                guard let current = system.image(on: display.id) else { return }
+                if let active = installation(on: display.id, matching: current, in: state.installations + state.pending) {
+                    guard try restore(active, allowDefault: true) else { return }
+                    try remove(active)
+                } else {
+                    guard isGenerated(current), try restoreDefault(on: display.id, replacing: current) else { return }
+                }
+                report(nil, on: display.id)
             }
-            report(nil, on: display.id)
         } catch {
             report("Impossible de rétablir le fond. \(error.localizedDescription)", on: display.id)
         }
     }
 
     func refresh(now: Date = .now) {
+        do {
+            try withCurrentState(wait: false) {
+                refreshInstallations(now: now)
+            }
+        } catch {
+            for display in displays where statuses[display.id] == .applied {
+                report("Actualisation du fond impossible. \(error.localizedDescription)", on: display.id)
+            }
+        }
+    }
+
+    private func refreshInstallations(now: Date) {
         let connected = system.displays
         if displays != connected { displays = connected }
-        if selected == nil { selected = connected.first?.id }
+        if selected == nil { selected = state.selected ?? connected.first?.id }
+        let settings = state.installations.isEmpty ? nil : loadSettings()
         let snapshot = settings.flatMap { CountdownSnapshot(settings: $0, now: now) }
         for display in connected {
             let current = system.image(on: display.id)
             if let pending = installation(on: display.id, matching: current, in: state.pending) {
                 do {
                     if try restore(pending) {
-                        remove(pending)
+                        try remove(pending)
                         report(nil, on: display.id)
                     }
                 } catch {
@@ -245,7 +273,8 @@ final class WallpaperController: ObservableObject {
                   var active = installation(on: display.id, matching: current, in: state.installations) else { continue }
             let renderer = CountdownRenderer(settings: settings, snapshot: snapshot, insets: display.insets)
             let signature = renderer.pngVisualState(in: display.size, backingScale: display.scale)
-            guard signature != rendered[active.folder] else { continue }
+            if active.rendererVersion == rendererVersion, active.rendered == signature,
+               FileManager.default.fileExists(atPath: imageURL(for: active).path) { continue }
             do {
                 let previous = active
                 active.slot = 1 - active.slot
@@ -253,16 +282,18 @@ final class WallpaperController: ObservableObject {
                 // The active Space or its wallpaper may have changed during rendering.
                 guard owns(system.image(on: display.id), previous) else { continue }
                 try set(active)
+                active.rendered = signature
+                active.rendererVersion = rendererVersion
                 if let index = state.installations.firstIndex(where: { $0.folder == active.folder }) {
                     state.installations[index] = active
                 }
-                rendered[active.folder] = signature
-                persist()
+                try persist()
+                report(nil, on: display.id)
             } catch {
                 report("Actualisation du fond impossible. \(error.localizedDescription)", on: display.id)
             }
         }
-        updateStatuses()
+        if tracksStatus { updateStatuses() }
     }
 
     private func updateStatuses() {
@@ -295,7 +326,17 @@ final class WallpaperController: ObservableObject {
     }
 
     private func installation(on id: String, matching url: URL?, in installations: [Installation]) -> Installation? {
-        installations.first { $0.displayID == id && owns(url, $0) }
+        guard let url else { return nil }
+        for var installation in installations where installation.displayID == id {
+            if owns(url, installation) { return installation }
+            // A refresh may have handed the other slot to macOS before saving its state.
+            installation.slot = 1 - installation.slot
+            if owns(url, installation) {
+                installation.rendered = nil
+                return installation
+            }
+        }
+        return nil
     }
 
     private func captureOriginal(_ url: URL?, on id: String, in folder: UUID) -> OriginalImage? {
@@ -379,11 +420,10 @@ final class WallpaperController: ObservableObject {
         }
     }
 
-    private func remove(_ installation: Installation) {
+    private func remove(_ installation: Installation) throws {
         state.installations.removeAll { $0.folder == installation.folder }
         state.pending.removeAll { $0.folder == installation.folder }
-        rendered.removeValue(forKey: installation.folder)
-        persist()
+        try persist()
     }
 
     private func isGenerated(_ url: URL) -> Bool {
@@ -432,8 +472,38 @@ final class WallpaperController: ObservableObject {
         ])
     }
 
-    private func persist() {
-        if let data = try? JSONEncoder().encode(state) { defaults.set(data, forKey: stateKey) }
+    // Both processes use the same lock and the same existing preference domain.
+    // Reload under the lock so a refresh cannot overwrite a simultaneous Apply or Restore.
+    private func withCurrentState(wait: Bool = true, _ operation: () throws -> Void) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appending(path: ".wallpaper.lock").path
+        let descriptor = open(path, O_CREAT | O_RDWR | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC, 0o600)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(descriptor) }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG,
+              info.st_uid == getuid(), (info.st_mode & 0o077) == 0 else {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        while flock(descriptor, wait ? LOCK_EX : LOCK_EX | LOCK_NB) != 0 {
+            if errno == EINTR { continue }
+            if !wait && errno == EWOULDBLOCK { return }
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        guard synchronizeState() else { throw CocoaError(.fileReadUnknown) }
+        let data = CFPreferencesCopyValue(stateKey, preferenceDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? Data
+        state = try data.map { try JSONDecoder().decode(StoredState.self, from: $0) } ?? StoredState()
+        try operation()
+    }
+
+    private func persist() throws {
+        let data = try JSONEncoder().encode(state)
+        CFPreferencesSetValue(stateKey, data as CFData, preferenceDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+        guard synchronizeState() else { throw CocoaError(.fileWriteUnknown) }
+    }
+
+    private func synchronizeState() -> Bool {
+        CFPreferencesSynchronize(preferenceDomain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
     }
 
     private func report(_ message: String?, on id: String) {
@@ -441,7 +511,7 @@ final class WallpaperController: ObservableObject {
     }
 
     private func observeChanges() {
-        Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+        Timer.publish(every: tracksStatus ? 5 : 15, tolerance: 2, on: .main, in: .common).autoconnect()
             .sink { [weak self] _ in self?.refresh() }
             .store(in: &observations)
         let notifications = NotificationCenter.default
