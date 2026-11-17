@@ -102,8 +102,8 @@ private final class CountdownEditor: ObservableObject {
     private static let backgroundBundleKey = "wallpaperBackgroundBundlePath"
     private var backgroundBundlePath: String { Bundle.main.bundleURL.resolvingSymlinksInPath().path }
     private lazy var backgroundExecutableHash: String? = {
-        guard let executable = Bundle.main.executableURL?.deletingLastPathComponent()
-            .appending(path: "CompteAReboursWallpaper"),
+        let helperURL = Bundle.main.bundleURL.appending(path: "Contents/Helpers/CompteAReboursWallpaper.app")
+        guard let executable = Bundle(url: helperURL)?.executableURL,
               let data = try? Data(contentsOf: executable, options: .mappedIfSafe) else { return nil }
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }()
@@ -157,7 +157,7 @@ private final class CountdownEditor: ObservableObject {
     func setUpWallpaperBackground(shouldEnable: Bool) {
         let defaults = UserDefaults.standard
         let registeredPath = defaults.string(forKey: Self.backgroundBundleKey)
-        // An ad-hoc signed helper's registered code requirement changes with its executable.
+        // Refresh the registration when an update changes the helper or its signature.
         if Self.wallpaperService.status == .enabled, let hash = backgroundExecutableHash,
            registeredPath == nil || registeredPath == backgroundBundlePath,
            defaults.string(forKey: Self.backgroundExecutableKey) != hash {

@@ -5,7 +5,7 @@
 	<key>Label</key>
 	<string>fr.comptearebours.macos.wallpaper</string>
 	<key>BundleProgram</key>
-	<string>Contents/MacOS/CompteAReboursWallpaper</string>
+	<string>Contents/Helpers/CompteAReboursWallpaper.app/Contents/MacOS/CompteAReboursWallpaper</string>
 	<key>LimitLoadToSessionType</key>
 	<string>Aqua</string>
 	<key>KeepAlive</key>
