@@ -34,7 +34,7 @@
 
 /* Begin PBXCopyFilesBuildPhase section */
 		000000000000000000000031 = { isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (000000000000000000000030,); name = "Embed Screen Saver"; runOnlyForDeploymentPostprocessing = 0; };
-		000000000000000000000050 = { isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 6; files = (000000000000000000000046,); name = "Embed Wallpaper Agent"; runOnlyForDeploymentPostprocessing = 0; };
+		000000000000000000000050 = { isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = Contents/Helpers; dstSubfolderSpec = 1; files = (000000000000000000000046,); name = "Embed Wallpaper Agent"; runOnlyForDeploymentPostprocessing = 0; };
 		000000000000000000000051 = { isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = Contents/Library/LaunchAgents; dstSubfolderSpec = 1; files = (000000000000000000000045,); name = "Embed Launch Agent Configuration"; runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXCopyFilesBuildPhase section */
 
@@ -52,7 +52,7 @@
 		00000000000000000000002E = { isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		000000000000000000000047 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperAgent.swift; sourceTree = "<group>"; };
 		000000000000000000000048 = { isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = fr.comptearebours.macos.wallpaper.plist; sourceTree = "<group>"; };
-		000000000000000000000049 = { isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = CompteAReboursWallpaper; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000049 = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CompteAReboursWallpaper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -74,7 +74,7 @@
 /* Begin PBXNativeTarget section */
 		000000000000000000000013 = { isa = PBXNativeTarget; buildConfigurationList = 00000000000000000000001B; buildPhases = (000000000000000000000017, 000000000000000000000018, 000000000000000000000019, 000000000000000000000031, 000000000000000000000050, 000000000000000000000051,); buildRules = (); dependencies = (000000000000000000000032, 000000000000000000000052,); name = CompteARebours; productName = CompteARebours; productReference = 000000000000000000000015; productType = "com.apple.product-type.application"; };
 		000000000000000000000014 = { isa = PBXNativeTarget; buildConfigurationList = 000000000000000000000027; buildPhases = (000000000000000000000023, 000000000000000000000024, 000000000000000000000025,); buildRules = (); dependencies = (); name = CompteAReboursSaver; productName = CompteAReboursSaver; productReference = 000000000000000000000016; productType = "com.apple.product-type.bundle"; };
-		00000000000000000000004B = { isa = PBXNativeTarget; buildConfigurationList = 000000000000000000000054; buildPhases = (00000000000000000000004C, 00000000000000000000004D,); buildRules = (); dependencies = (); name = CompteAReboursWallpaper; productName = CompteAReboursWallpaper; productReference = 000000000000000000000049; productType = "com.apple.product-type.tool"; };
+		00000000000000000000004B = { isa = PBXNativeTarget; buildConfigurationList = 000000000000000000000054; buildPhases = (00000000000000000000004C, 00000000000000000000004D,); buildRules = (); dependencies = (); name = CompteAReboursWallpaper; productName = CompteAReboursWallpaper; productReference = 000000000000000000000049; productType = "com.apple.product-type.application"; };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -186,12 +186,12 @@
 		000000000000000000000055 = { isa = XCBuildConfiguration; buildSettings = {
 			CLANG_ENABLE_OBJC_WEAK = YES;
 			DEAD_CODE_STRIPPING = YES;
-			PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; ENABLE_DEBUG_DYLIB = NO; SKIP_INSTALL = YES;
+			PRODUCT_NAME = "$(TARGET_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = fr.comptearebours.macos.wallpaper; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_LSBackgroundOnly = YES; ENABLE_DEBUG_DYLIB = NO; SKIP_INSTALL = YES;
 		}; name = Debug; };
 		000000000000000000000056 = { isa = XCBuildConfiguration; buildSettings = {
 			CLANG_ENABLE_OBJC_WEAK = YES;
 			DEAD_CODE_STRIPPING = YES;
-			PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; ENABLE_DEBUG_DYLIB = NO; SKIP_INSTALL = YES;
+			PRODUCT_NAME = "$(TARGET_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = fr.comptearebours.macos.wallpaper; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_LSBackgroundOnly = YES; ENABLE_DEBUG_DYLIB = NO; SKIP_INSTALL = YES;
 		}; name = Release; };
 /* End XCBuildConfiguration section */
 
